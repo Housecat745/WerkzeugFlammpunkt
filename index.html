@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flammpunkt · Werkzeugverwaltung</title>
+
+<https://apabdownwzqjomrkycxu.supabase.co/rest/v1/>
+<sb_publishable_7EHUaRypOPvshplaFoT_EQ_BDC6TOOe>
+<werkzeug@fp.de>
+<script>
+const CONFIG = {
+  // Supabase → Project Settings → Data API / API Keys
+  SUPABASE_URL:      "HIER_DEINE_PROJECT_URL",      // z.B. https://abcde.supabase.co
+  SUPABASE_ANON_KEY: "HIER_DEIN_ANON_KEY",          // der "anon / public" Schlüssel
+  // Die E-Mail des gemeinsamen Firmen-Logins (legst du in Supabase → Authentication an)
+  FIRMEN_EMAIL:      "werkzeug@flammpunkt.de"
+};
+</script>
+
+<!-- externe Bibliotheken -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+<style>
+  :root{
+    --rot:#A6192E; --rot-dunkel:#85141F;
+    --tinte:#1A1A1A; --bg:#F7F6F4; --karte:#FFFFFF;
+    --gruen:#2E7D32; --grau:#6B6B6B; --linie:#E2E0DC;
+    --schatten:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--tinte);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:17px;line-height:1.45}
+  h1,h2,h3{margin:0;font-weight:800;letter-spacing:-.01em}
+  button{font-family:inherit;font-size:16px;cursor:pointer;border:none}
+  input,select,textarea{font-family:inherit;font-size:16px}
+
+  /* Kopfbalken */
+  header{position:sticky;top:0;z-index:20;background:var(--tinte);color:#fff;
+    padding:calc(env(safe-area-inset-top) + 12px) 16px 12px;
+    display:flex;align-items:center;gap:12px;box-shadow:var(--schatten)}
+  header .marke{font-weight:800;letter-spacing:.02em}
+  header .marke b{color:var(--rot)}
+  header .zurueck{background:none;color:#fff;font-size:22px;line-height:1;padding:4px 8px;margin-left:-8px}
+  header .titel{font-size:15px;font-weight:600;opacity:.85;margin-left:auto}
+
+  main{max-width:760px;margin:0 auto;padding:16px 16px 96px}
+
+  /* Karten */
+  .karte{background:var(--karte);border:1px solid var(--linie);border-radius:14px;
+    padding:14px;box-shadow:var(--schatten);margin-bottom:12px}
+  .karte.klick{cursor:pointer;transition:transform .06s}
+  .karte.klick:active{transform:scale(.99)}
+  .zeile{display:flex;align-items:center;gap:12px}
+  .wachse{flex:1;min-width:0}
+  .abschneiden{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .klein{font-size:13.5px;color:var(--grau)}
+  .kennz{font-weight:800;font-size:19px;letter-spacing:.03em}
+
+  /* Status-Ampel */
+  .ampel{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;
+    padding:5px 11px;border-radius:999px}
+  .ampel .punkt{width:9px;height:9px;border-radius:50%}
+  .ampel.ok{background:#E7F2E8;color:var(--gruen)} .ampel.ok .punkt{background:var(--gruen)}
+  .ampel.faellig{background:#FBEAEC;color:var(--rot)} .ampel.faellig .punkt{background:var(--rot)}
+
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    background:var(--rot);color:#fff;font-weight:700;padding:14px 18px;border-radius:12px;
+    width:100%;transition:background .1s}
+  .btn:active{background:var(--rot-dunkel)}
+  .btn.geist{background:#fff;color:var(--tinte);border:1.5px solid var(--linie)}
+  .btn.geist:active{background:#f0efec}
+  .btn.klein{width:auto;padding:9px 14px;font-size:14px}
+  .btn.gefahr{background:#fff;color:var(--rot);border:1.5px solid #f0c4ca}
+  .btn-reihe{display:flex;gap:10px;flex-wrap:wrap}
+
+  /* Foto-Thumb */
+  .thumb{width:58px;height:58px;border-radius:10px;object-fit:cover;background:#eee;flex:none}
+  .thumb.leer{display:flex;align-items:center;justify-content:center;color:#bbb;font-size:22px;border:1px dashed var(--linie)}
+  .foto-gross{width:100%;max-height:320px;object-fit:contain;border-radius:12px;background:#f0efec}
+
+  /* Formular */
+  label.feld{display:block;margin:14px 0 6px;font-size:13.5px;font-weight:700;color:var(--grau)}
+  input[type=text],input[type=number],input[type=password],select,textarea{
+    width:100%;padding:13px;border:1.5px solid var(--linie);border-radius:11px;background:#fff}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--rot)}
+  textarea{min-height:74px;resize:vertical}
+
+  /* Titelzeile eines Screens */
+  .kopf{display:flex;align-items:center;gap:12px;margin:4px 0 18px}
+  .kopf h1{font-size:23px;flex:1}
+
+  /* leerer Zustand */
+  .leer-hinweis{text-align:center;color:var(--grau);padding:40px 10px}
+  .leer-hinweis .gross{font-size:40px;margin-bottom:8px}
+
+  /* Login */
+  .login-wrap{min-height:100dvh;display:flex;flex-direction:column;justify-content:center;
+    align-items:center;padding:24px;text-align:center}
+  .login-wrap .logo{font-size:34px;font-weight:800;margin-bottom:4px}
+  .login-wrap .logo b{color:var(--rot)}
+  .login-card{background:#fff;border:1px solid var(--linie);border-radius:16px;
+    padding:24px;box-shadow:var(--schatten);width:100%;max-width:360px;margin-top:20px}
+
+  /* Unterschrift */
+  #sigpad{width:100%;height:200px;background:#fff;border:1.5px dashed var(--linie);
+    border-radius:12px;touch-action:none}
+
+  /* Scanner */
+  #reader{width:100%;border-radius:12px;overflow:hidden}
+
+  /* Toast */
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(120px);
+    background:var(--tinte);color:#fff;padding:13px 18px;border-radius:12px;max-width:90%;
+    box-shadow:0 6px 20px rgba(0,0,0,.25);transition:transform .25s;z-index:60;font-size:15px}
+  #toast.zeig{transform:translateX(-50%) translateY(0)}
+  #toast.fehler{background:var(--rot)}
+
+  /* Lade-Overlay */
+  #laden{position:fixed;inset:0;background:rgba(247,246,244,.75);display:none;
+    align-items:center;justify-content:center;z-index:50}
+  #laden.zeig{display:flex}
+  .spinner{width:38px;height:38px;border:4px solid var(--linie);border-top-color:var(--rot);
+    border-radius:50%;animation:dreh .8s linear infinite}
+  @keyframes dreh{to{transform:rotate(360deg)}}
+
+  /* schwebender Aktionsknopf */
+  .fab-reihe{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);
+    background:linear-gradient(to top,var(--bg) 60%,transparent);max-width:760px;margin:0 auto;z-index:15}
+
+  /* Druck: QR-Bogen */
+  #druckbereich{display:none}
+  @media print{
+    header,main,.fab-reihe,#toast,#laden{display:none !important}
+    #druckbereich{display:block !important}
+    .qr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10mm;padding:8mm}
+    .qr-label{border:1px dashed #999;border-radius:6px;padding:6mm 3mm;text-align:center;
+      break-inside:avoid;page-break-inside:avoid}
+    .qr-label canvas{width:34mm !important;height:34mm !important}
+    .qr-label .nm{font-size:11pt;font-weight:700;margin-top:3mm;word-break:break-word}
+    .qr-label .sub{font-size:8pt;color:#555}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+
+<header id="kopfbalken" style="display:none">
+  <button class="zurueck" id="btnZurueck" style="display:none" aria-label="Zurück">‹</button>
+  <span class="marke">FLAMM<b>PUNKT</b></span>
+  <span class="titel" id="kopfTitel">Werkzeug</span>
+</header>
+
+<main id="app"></main>
+<div class="fab-reihe" id="fab" style="display:none"></div>
+
+<div id="druckbereich"></div>
+<div id="toast"></div>
+<div id="laden"><div class="spinner"></div></div>
+
+<script>
+"use strict";
+
+/* ---------- Kurzhelfer ---------- */
+const $  = (sel,el=document)=>el.querySelector(sel);
+const el = (tag,props={})=>Object.assign(document.createElement(tag),props);
+const app = $("#app");
+const fab = $("#fab");
+const heute = ()=> new Date();
+const aktMonat = ()=>{const d=heute();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");};
+const monatLesbar = (m)=>{const [j,mo]=m.split("-");const n=["Jan","Feb","März","Apr","Mai","Juni","Juli","Aug","Sept","Okt","Nov","Dez"];return n[+mo-1]+" "+j;};
+const esc = (s)=> (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function toast(text,fehler=false){
+  const t=$("#toast"); t.textContent=text; t.className=(fehler?"fehler ":"")+"zeig";
+  clearTimeout(t._to); t._to=setTimeout(()=>t.className="",3200);
+}
+function laden(an){ $("#laden").classList.toggle("zeig",!!an); }
+
+/* ---------- Supabase ---------- */
+let sb=null;
+function initSupabase(){
+  if(!CONFIG.SUPABASE_URL||CONFIG.SUPABASE_URL.startsWith("HIER")){
+    app.innerHTML='<div class="karte" style="margin-top:40px"><h2>Noch nicht eingerichtet</h2>'
+      +'<p class="klein">In dieser Datei fehlen oben im Abschnitt <b>KONFIGURATION</b> noch deine Supabase-Werte '
+      +'(URL, Schlüssel, Firmen-E-Mail). Trag sie ein, dann läuft die App. Die Schritte stehen in der Datei SETUP.md.</p></div>';
+    return false;
+  }
+  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+  return true;
+}
+
+/* ---------- Bilder (privater Bucket → signierte URLs) ---------- */
+const urlCache = new Map();
+async function bildUrl(pfad){
+  if(!pfad) return null;
+  if(urlCache.has(pfad)) return urlCache.get(pfad);
+  const {data,error} = await sb.storage.from("medien").createSignedUrl(pfad,3600);
+  if(error){ console.warn(error); return null; }
+  urlCache.set(pfad,data.signedUrl); return data.signedUrl;
+}
+async function fuelleBilder(container=document){
+  const imgs=[...container.querySelectorAll("img[data-pfad]")];
+  await Promise.all(imgs.map(async img=>{
+    const u=await bildUrl(img.dataset.pfad);
+    if(u){ img.src=u; img.classList.remove("leer"); }
+  }));
+}
+
+/* Foto verkleinern + als JPEG-Blob */
+function komprimiere(file,maxKante=1280,q=0.72){
+  return new Promise((res,rej)=>{
+    const img=new Image(); const rd=new FileReader();
+    rd.onerror=rej; img.onerror=rej;
+    rd.onload=()=>{img.src=rd.result;};
+    img.onload=()=>{
+      let {width:w,height:h}=img;
+      if(w>h && w>maxKante){h=Math.round(h*maxKante/w);w=maxKante;}
+      else if(h>maxKante){w=Math.round(w*maxKante/h);h=maxKante;}
+      const c=el("canvas"); c.width=w;c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      c.toBlob(b=> b?res(b):rej(new Error("Bild konnte nicht verarbeitet werden")),"image/jpeg",q);
+    };
+    rd.readAsDataURL(file);
+  });
+}
+async function fotoHochladen(pfad,blob){
+  const {error}=await sb.storage.from("medien").upload(pfad,blob,{upsert:true,contentType:blob.type||"image/jpeg"});
+  if(error) throw error;
+  urlCache.delete(pfad);
+  return pfad;
+}
+
+/* ---------- kleiner Router ---------- */
+const stack=[];  // Verlauf für den Zurück-Knopf
+function zeige(renderFn,titel){
+  stack.push({renderFn,titel});
+  render();
+}
+function zurueck(){ if(stack.length>1){stack.pop();render();} }
+function ersetze(renderFn,titel){ stack.pop(); zeige(renderFn,titel); }
+async function render(){
+  const cur=stack[stack.length-1];
+  $("#kopfbalken").style.display="flex";
+  $("#kopfTitel").textContent=cur.titel||"";
+  $("#btnZurueck").style.display = stack.length>1 ? "block":"none";
+  fab.innerHTML=""; fab.style.display="none";
+  app.innerHTML='<div style="padding:30px;text-align:center" class="klein">…</div>';
+  try{ await cur.renderFn(); }
+  catch(e){ console.error(e); app.innerHTML='<div class="karte"><b>Fehler:</b> '+esc(e.message||e)+'</div>'; }
+}
+$("#btnZurueck").onclick=zurueck;
+
+function setFab(html,onclick){
+  fab.innerHTML=html; fab.style.display="block";
+  const b=fab.querySelector("button"); if(b&&onclick) b.onclick=onclick;
+}
+
+/* ============================================================ */
+/*  LOGIN                                                       */
+/* ============================================================ */
+function zeigeLogin(){
+  stack.length=0;
+  $("#kopfbalken").style.display="none"; fab.style.display="none";
+  app.innerHTML=`
+    <div class="login-wrap">
+      <div class="logo">FLAMM<b>PUNKT</b></div>
+      <div class="klein">Werkzeugverwaltung Servicefahrzeuge</div>
+      <div class="login-card">
+        <label class="feld" style="text-align:left">Firmen-Passwort</label>
+        <input type="password" id="pw" autocomplete="current-password" placeholder="••••••••">
+        <div style="height:14px"></div>
+        <button class="btn" id="btnLogin">Anmelden</button>
+        <div class="klein" id="loginFehler" style="color:var(--rot);margin-top:10px;min-height:18px"></div>
+      </div>
+    </div>`;
+  const tryLogin=async()=>{
+    const pw=$("#pw").value.trim();
+    if(!pw){ $("#loginFehler").textContent="Bitte Passwort eingeben."; return; }
+    laden(true);
+    const {error}=await sb.auth.signInWithPassword({email:CONFIG.FIRMEN_EMAIL,password:pw});
+    laden(false);
+    if(error){ $("#loginFehler").textContent="Passwort stimmt nicht (oder Login noch nicht angelegt)."; return; }
+    starteApp();
+  };
+  $("#btnLogin").onclick=tryLogin;
+  $("#pw").addEventListener("keydown",e=>{if(e.key==="Enter")tryLogin();});
+}
+
+async function abmelden(){
+  await sb.auth.signOut(); urlCache.clear(); zeigeLogin();
+}
+
+/* ============================================================ */
+/*  ÜBERSICHT FAHRZEUGE                                         */
+/* ============================================================ */
+async function zeigeUebersicht(){
+  const m=aktMonat();
+  const [{data:fz,error:e1},{data:best,error:e2},{data:fahrer}] = await Promise.all([
+    sb.from("fahrzeuge").select("*, fahrer(name)").order("kennzeichen"),
+    sb.from("bestaetigungen").select("fahrzeug_id").eq("monat",m),
+    sb.from("fahrer").select("id")
+  ]);
+  if(e1) throw e1;
+  const bestSet=new Set((best||[]).map(b=>b.fahrzeug_id));
+
+  let h=`<div class="kopf"><h1>Fahrzeuge</h1>
+    <button class="btn geist klein" id="btnFahrer">👤 Fahrer</button>
+    <button class="btn geist klein" id="btnScan">⛶ Scannen</button></div>`;
+  h+=`<div class="klein" style="margin:-8px 0 14px">Monatscheck ${monatLesbar(m)}</div>`;
+
+  if(!fz||!fz.length){
+    h+=`<div class="leer-hinweis"><div class="gross">🚐</div>Noch kein Fahrzeug angelegt.<br>Unten auf „Fahrzeug hinzufügen".</div>`;
+  }else{
+    for(const f of fz){
+      const ok=bestSet.has(f.id);
+      h+=`<div class="karte klick" data-fz="${f.id}">
+        <div class="zeile">
+          <div class="wachse">
+            <div class="kennz">${esc(f.kennzeichen)}</div>
+            <div class="klein abschneiden">${esc(f.bezeichnung||"—")}${f.fahrer?.name?" · "+esc(f.fahrer.name):""}</div>
+          </div>
+          <span class="ampel ${ok?"ok":"faellig"}"><span class="punkt"></span>${ok?"bestätigt":"fällig"}</span>
+        </div></div>`;
+    }
+  }
+  app.innerHTML=h;
+  app.querySelectorAll("[data-fz]").forEach(c=>c.onclick=()=>zeige(()=>zeigeFahrzeug(c.dataset.fz),"Fahrzeug"));
+  $("#btnFahrer").onclick=()=>zeige(zeigeFahrerListe,"Fahrer");
+  $("#btnScan").onclick=()=>zeige(zeigeScanner,"QR scannen");
+  setFab(`<button class="btn">＋ Fahrzeug hinzufügen</button>`,()=>zeige(()=>formFahrzeug(),"Neues Fahrzeug"));
+}
+
+/* ---------- Fahrzeug anlegen/bearbeiten ---------- */
+async function formFahrzeug(vorhanden){
+  const {data:fahrer}=await sb.from("fahrer").select("*").order("name");
+  const f=vorhanden||{};
+  app.innerHTML=`
+    <div class="kopf"><h1>${vorhanden?"Fahrzeug bearbeiten":"Neues Fahrzeug"}</h1></div>
+    <div class="karte">
+      <label class="feld">Kennzeichen *</label>
+      <input type="text" id="kennz" value="${esc(f.kennzeichen||"")}" placeholder="z.B. BIT-FP 123" autocapitalize="characters">
+      <label class="feld">Bezeichnung / Typ</label>
+      <input type="text" id="bez" value="${esc(f.bezeichnung||"")}" placeholder="z.B. Caddy Service 2">
+      <label class="feld">Fester Fahrer</label>
+      <select id="fahrer"><option value="">— keiner —</option>
+        ${(fahrer||[]).map(fr=>`<option value="${fr.id}" ${f.fahrer_id===fr.id?"selected":""}>${esc(fr.name)}</option>`).join("")}
+      </select>
+    </div>`;
+  const btns=`<button class="btn">${vorhanden?"Speichern":"Anlegen"}</button>`;
+  setFab(btns, async()=>{
+    const kennzeichen=$("#kennz").value.trim();
+    if(!kennzeichen){ toast("Kennzeichen fehlt.",true); return; }
+    const rec={kennzeichen,bezeichnung:$("#bez").value.trim()||null,fahrer_id:$("#fahrer").value||null};
+    laden(true);
+    try{
+      if(vorhanden){ const {error}=await sb.from("fahrzeuge").update(rec).eq("id",vorhanden.id); if(error)throw error; }
+      else{ const {error}=await sb.from("fahrzeuge").insert(rec); if(error)throw error; }
+      toast("Gespeichert."); zurueck();
+    }catch(e){ toast(e.message,true); } finally{ laden(false); }
+  });
+}
+
+/* ============================================================ */
+/*  FAHRZEUG-DETAIL + WERKZEUGE                                 */
+/* ============================================================ */
+async function zeigeFahrzeug(id){
+  const {data:f,error}=await sb.from("fahrzeuge").select("*, fahrer(name)").eq("id",id).single();
+  if(error) throw error;
+  const {data:wz}=await sb.from("werkzeuge").select("*").eq("fahrzeug_id",id).order("name");
+  const {data:best}=await sb.from("bestaetigungen").select("*").eq("fahrzeug_id",id).eq("monat",aktMonat()).order("erstellt",{ascending:false}).limit(1);
+  const bestaetigt=best&&best[0];
+
+  let h=`<div class="karte">
+    <div class="zeile">
+      <div class="wachse"><div class="kennz" style="font-size:22px">${esc(f.kennzeichen)}</div>
+        <div class="klein">${esc(f.bezeichnung||"—")}${f.fahrer?.name?" · Fahrer: "+esc(f.fahrer.name):""}</div></div>
+      <button class="btn geist klein" id="btnEditFz">Bearbeiten</button>
+    </div>
+    <div style="margin-top:12px">
+      <span class="ampel ${bestaetigt?"ok":"faellig"}"><span class="punkt"></span>
+        ${bestaetigt?("bestätigt am "+new Date(bestaetigt.erstellt).toLocaleDateString("de-DE")+(bestaetigt.fahrer_name?" · "+esc(bestaetigt.fahrer_name):"")):("Monatscheck "+monatLesbar(aktMonat())+" offen")}</span>
+    </div>
+  </div>`;
+
+  h+=`<div class="kopf" style="margin-top:20px"><h2 style="font-size:19px;flex:1">Werkzeug (${wz?wz.length:0})</h2>
+      <button class="btn geist klein" id="btnDruck">🏷️ QR-Bogen</button></div>`;
+
+  if(!wz||!wz.length){
+    h+=`<div class="leer-hinweis"><div class="gross">🧰</div>Noch kein Werkzeug erfasst.</div>`;
+  }else{
+    for(const w of wz){
+      h+=`<div class="karte klick" data-wz="${w.id}">
+        <div class="zeile">
+          ${w.foto_pfad?`<img class="thumb" data-pfad="${esc(w.foto_pfad)}" alt="">`:`<div class="thumb leer">🧰</div>`}
+          <div class="wachse"><div style="font-weight:700" class="abschneiden">${esc(w.name)}</div>
+            <div class="klein">Anzahl: ${w.anzahl??1}${w.seriennummer?" · Nr. "+esc(w.seriennummer):""}</div></div>
+          <span class="klein">›</span>
+        </div></div>`;
+    }
+  }
+  app.innerHTML=h;
+  await fuelleBilder(app);
+  $("#btnEditFz").onclick=()=>zeige(()=>formFahrzeug(f),"Fahrzeug bearbeiten");
+  $("#btnDruck").onclick=()=>druckeQrBogen(f,wz||[]);
+  app.querySelectorAll("[data-wz]").forEach(c=>c.onclick=()=>zeige(()=>zeigeWerkzeug(c.dataset.wz),"Werkzeug"));
+
+  setFab(`<div class="btn-reihe">
+      <button class="btn geist" style="flex:1" id="fabWz">＋ Werkzeug</button>
+      <button class="btn" style="flex:1" id="fabCheck">✔ Monatscheck</button></div>`);
+  $("#fabWz").onclick=()=>zeige(()=>formWerkzeug(id),"Neues Werkzeug");
+  $("#fabCheck").onclick=()=>zeige(()=>zeigeMonatscheck(f),"Monatscheck");
+}
+
+/* ---------- Werkzeug anlegen/bearbeiten ---------- */
+async function formWerkzeug(fahrzeugId,vorhanden){
+  const w=vorhanden||{};
+  app.innerHTML=`
+    <div class="kopf"><h1>${vorhanden?"Werkzeug bearbeiten":"Neues Werkzeug"}</h1></div>
+    <div class="karte">
+      <label class="feld">Bezeichnung *</label>
+      <input type="text" id="wname" value="${esc(w.name||"")}" placeholder="z.B. Akkuschrauber Makita">
+      <label class="feld">Anzahl</label>
+      <input type="number" id="wanz" value="${w.anzahl??1}" min="0" inputmode="numeric">
+      <label class="feld">Seriennummer / Inventar-Nr. (optional)</label>
+      <input type="text" id="wsn" value="${esc(w.seriennummer||"")}">
+
+      <label class="feld">Foto vom Werkzeug</label>
+      <div class="zeile">
+        <img class="thumb ${w.foto_pfad?"":"leer"}" id="prevFoto" ${w.foto_pfad?`data-pfad="${esc(w.foto_pfad)}"`:""}>${w.foto_pfad?"":"📷"}
+        <input type="file" accept="image/*" capture="environment" id="fFoto" style="flex:1">
+      </div>
+
+      <label class="feld">Foto eines vorhandenen Bar-/QR-Codes (optional)</label>
+      <div class="zeile">
+        <img class="thumb ${w.code_foto_pfad?"":"leer"}" id="prevCode" ${w.code_foto_pfad?`data-pfad="${esc(w.code_foto_pfad)}"`:""}>${w.code_foto_pfad?"":"🏷️"}
+        <input type="file" accept="image/*" capture="environment" id="fCode" style="flex:1">
+      </div>
+      <div class="klein" style="margin-top:12px">Den <b>aufklebbaren</b> QR-Code erzeugt die App selbst — den findest du nach dem Speichern in der Werkzeug-Ansicht und im QR-Bogen.</div>
+    </div>`;
+  await fuelleBilder(app);
+
+  // Vorschau der frisch gewählten Datei
+  const vorschau=(inp,imgId)=>{ inp.onchange=()=>{ const fl=inp.files[0]; if(fl){ const img=$("#"+imgId); img.src=URL.createObjectURL(fl); img.classList.remove("leer"); img.textContent=""; } }; };
+  vorschau($("#fFoto"),"prevFoto"); vorschau($("#fCode"),"prevCode");
+
+  setFab(`<button class="btn">${vorhanden?"Speichern":"Anlegen"}</button>`, async()=>{
+    const name=$("#wname").value.trim();
+    if(!name){ toast("Bezeichnung fehlt.",true); return; }
+    const rec={fahrzeug_id:fahrzeugId,name,anzahl:parseInt($("#wanz").value||"1",10),seriennummer:$("#wsn").value.trim()||null};
+    laden(true);
+    try{
+      let id=vorhanden?.id;
+      if(vorhanden){ const {error}=await sb.from("werkzeuge").update(rec).eq("id",id); if(error)throw error; }
+      else{ const {data,error}=await sb.from("werkzeuge").insert(rec).select("id").single(); if(error)throw error; id=data.id; }
+      // Fotos (falls neu gewählt)
+      const upd={};
+      const ff=$("#fFoto").files[0];
+      if(ff){ const b=await komprimiere(ff); upd.foto_pfad=await fotoHochladen(`werkzeuge/${id}/foto_${Date.now()}.jpg`,b); }
+      const fc=$("#fCode").files[0];
+      if(fc){ const b=await komprimiere(fc); upd.code_foto_pfad=await fotoHochladen(`werkzeuge/${id}/code_${Date.now()}.jpg`,b); }
+      if(Object.keys(upd).length){ const {error}=await sb.from("werkzeuge").update(upd).eq("id",id); if(error)throw error; }
+      toast("Gespeichert."); zurueck();
+    }catch(e){ toast(e.message,true); } finally{ laden(false); }
+  });
+}
+
+/* ---------- Werkzeug-Detail (mit QR) ---------- */
+async function zeigeWerkzeug(id){
+  const {data:w,error}=await sb.from("werkzeuge").select("*, fahrzeuge(kennzeichen)").eq("id",id).single();
+  if(error) throw error;
+  app.innerHTML=`
+    <div class="kopf"><h1 style="font-size:21px">${esc(w.name)}</h1></div>
+    ${w.foto_pfad?`<img class="foto-gross" data-pfad="${esc(w.foto_pfad)}" alt="" style="margin-bottom:12px">`:""}
+    <div class="karte">
+      <div class="klein">Fahrzeug</div><div style="font-weight:700;margin-bottom:8px">${esc(w.fahrzeuge?.kennzeichen||"—")}</div>
+      <div class="klein">Anzahl</div><div style="font-weight:700;margin-bottom:8px">${w.anzahl??1}</div>
+      ${w.seriennummer?`<div class="klein">Seriennummer</div><div style="font-weight:700;margin-bottom:8px">${esc(w.seriennummer)}</div>`:""}
+      ${w.code_foto_pfad?`<div class="klein">Vorhandener Code (Foto)</div><img class="foto-gross" data-pfad="${esc(w.code_foto_pfad)}" alt="" style="max-height:180px">`:""}
+    </div>
+    <div class="karte" style="text-align:center">
+      <div class="klein" style="margin-bottom:8px">Aufklebbarer QR-Code</div>
+      <canvas id="qr" style="width:180px;height:180px"></canvas>
+      <div class="klein" style="margin-top:6px">Scannen öffnet genau dieses Werkzeug.</div>
+    </div>`;
+  await fuelleBilder(app);
+  const ziel=`${location.origin}${location.pathname}?w=${w.id}`;
+  QRCode.toCanvas($("#qr"),ziel,{width:180,margin:1},err=>{ if(err)console.warn(err); });
+
+  setFab(`<div class="btn-reihe">
+      <button class="btn geist" style="flex:1" id="wEdit">Bearbeiten</button>
+      <button class="btn gefahr" style="flex:1" id="wDel">Löschen</button></div>`);
+  $("#wEdit").onclick=()=>zeige(()=>formWerkzeug(w.fahrzeug_id,w),"Werkzeug bearbeiten");
+  $("#wDel").onclick=async()=>{
+    if(!confirm(`„${w.name}" wirklich löschen?`)) return;
+    laden(true);
+    const {error}=await sb.from("werkzeuge").delete().eq("id",w.id);
+    laden(false);
+    if(error){ toast(error.message,true); return; }
+    toast("Gelöscht."); zurueck();
+  };
+}
+
+/* ---------- QR-Bogen drucken ---------- */
+function druckeQrBogen(f,wz){
+  if(!wz.length){ toast("Keine Werkzeuge zum Drucken.",true); return; }
+  const db=$("#druckbereich");
+  db.innerHTML=`<h2 style="padding:8mm 8mm 0">${esc(f.kennzeichen)} — ${esc(f.bezeichnung||"")}</h2>
+    <div class="qr-grid">${wz.map(w=>`<div class="qr-label"><canvas data-ziel="${location.origin}${location.pathname}?w=${w.id}"></canvas>
+      <div class="nm">${esc(w.name)}</div><div class="sub">${esc(f.kennzeichen)}${w.seriennummer?" · "+esc(w.seriennummer):""}</div></div>`).join("")}</div>`;
+  const canvases=[...db.querySelectorAll("canvas")];
+  Promise.all(canvases.map(c=>new Promise(r=>QRCode.toCanvas(c,c.dataset.ziel,{width:260,margin:1},()=>r()))))
+    .then(()=>{ window.print(); });
+}
+
+/* ============================================================ */
+/*  FAHRER-VERWALTUNG                                           */
+/* ============================================================ */
+async function zeigeFahrerListe(){
+  const {data:fahrer,error}=await sb.from("fahrer").select("*").order("name");
+  if(error) throw error;
+  let h=`<div class="kopf"><h1>Fahrer</h1></div>`;
+  if(!fahrer||!fahrer.length){ h+=`<div class="leer-hinweis"><div class="gross">👤</div>Noch keine Fahrer angelegt.</div>`; }
+  else{ for(const fr of fahrer){
+    h+=`<div class="karte"><div class="zeile"><div class="wachse" style="font-weight:700">${esc(fr.name)}</div>
+      <button class="btn gefahr klein" data-del="${fr.id}">Entfernen</button></div></div>`; } }
+  app.innerHTML=h;
+  app.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{
+    if(!confirm("Fahrer entfernen?")) return;
+    laden(true); const {error}=await sb.from("fahrer").delete().eq("id",b.dataset.del); laden(false);
+    if(error){toast(error.message,true);return;} render();
+  });
+  setFab(`<button class="btn">＋ Fahrer hinzufügen</button>`, async()=>{
+    const name=prompt("Name des Fahrers:"); if(!name||!name.trim())return;
+    laden(true); const {error}=await sb.from("fahrer").insert({name:name.trim()}); laden(false);
+    if(error){toast(error.message,true);return;} render();
+  });
+}
+
+/* ============================================================ */
+/*  MONATSCHECK + UNTERSCHRIFT                                  */
+/* ============================================================ */
+async function zeigeMonatscheck(f){
+  const m=aktMonat();
+  const {data:fahrer}=await sb.from("fahrer").select("*").order("name");
+  const {data:vorhanden}=await sb.from("bestaetigungen").select("*").eq("fahrzeug_id",f.id).eq("monat",m).limit(1);
+  const schon=vorhanden&&vorhanden[0];
+
+  app.innerHTML=`
+    <div class="kopf"><h1>Monatscheck</h1></div>
+    <div class="karte">
+      <div class="kennz">${esc(f.kennzeichen)}</div>
+      <div class="klein">${esc(f.bezeichnung||"")} · ${monatLesbar(m)}</div>
+    </div>
+    ${schon?`<div class="karte" style="background:#E7F2E8;border-color:#bfe0c3"><b>Für ${monatLesbar(m)} liegt schon eine Bestätigung vor</b><div class="klein">(${esc(schon.fahrer_name||"")}, ${new Date(schon.erstellt).toLocaleDateString("de-DE")}). Eine neue ersetzt die alte.</div></div>`:""}
+    <div class="karte">
+      <label class="zeile" style="gap:10px;cursor:pointer">
+        <input type="checkbox" id="cbVoll" checked style="width:22px;height:22px;flex:none">
+        <span style="font-weight:700">Alle Werkzeuge vollständig und einsatzbereit</span>
+      </label>
+      <label class="feld">Bemerkung (bei Mängeln)</label>
+      <textarea id="bem" placeholder="z.B. Akku vom Schrauber defekt – Ersatz bestellt"></textarea>
+      <label class="feld">Ich bestätige als *</label>
+      <select id="wer"><option value="">— Fahrer wählen —</option>
+        ${(fahrer||[]).map(fr=>`<option value="${fr.id}" ${f.fahrer_id===fr.id?"selected":""}>${esc(fr.name)}</option>`).join("")}
+      </select>
+      <label class="feld">Unterschrift *</label>
+      <canvas id="sigpad"></canvas>
+      <div style="margin-top:8px"><button class="btn geist klein" id="sigClear">Unterschrift löschen</button></div>
+    </div>`;
+
+  const sig=initSigPad($("#sigpad"));
+
+  setFab(`<button class="btn">Bestätigen &amp; speichern</button>`, async()=>{
+    const wer=$("#wer").value;
+    if(!wer){ toast("Bitte Fahrer wählen.",true); return; }
+    if(sig.leer()){ toast("Bitte unterschreiben.",true); return; }
+    const fname=(fahrer.find(x=>x.id===wer)||{}).name||null;
+    laden(true);
+    try{
+      // alte Bestätigung des Monats entfernen (Ersetzen)
+      if(schon){ await sb.from("bestaetigungen").delete().eq("fahrzeug_id",f.id).eq("monat",m); }
+      const {data,error}=await sb.from("bestaetigungen").insert({
+        fahrzeug_id:f.id, fahrer_id:wer, fahrer_name:fname, monat:m,
+        vollstaendig:$("#cbVoll").checked, bemerkung:$("#bem").value.trim()||null
+      }).select("id").single();
+      if(error) throw error;
+      const blob=await sig.blob();
+      const pfad=await fotoHochladen(`unterschriften/${f.id}/${m}.png`,blob);
+      await sb.from("bestaetigungen").update({unterschrift_pfad:pfad}).eq("id",data.id);
+      toast("Monatscheck gespeichert.");
+      stack.pop(); render(); // zurück ins Fahrzeug, frisch geladen
+    }catch(e){ toast(e.message,true); } finally{ laden(false); }
+  });
+  $("#sigClear").onclick=sig.clear;
+}
+
+/* Unterschrift-Feld (Canvas, Touch+Maus) */
+function initSigPad(canvas){
+  const ctx=canvas.getContext("2d");
+  function fit(){ const r=canvas.getBoundingClientRect(); const dpr=window.devicePixelRatio||1;
+    canvas.width=r.width*dpr; canvas.height=r.height*dpr; ctx.scale(dpr,dpr);
+    ctx.lineWidth=2.4; ctx.lineCap="round"; ctx.strokeStyle="#111"; }
+  fit();
+  let zeichnet=false, benutzt=false, lx=0, ly=0;
+  const pos=e=>{ const r=canvas.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; };
+  canvas.addEventListener("pointerdown",e=>{ zeichnet=true;benutzt=true; const p=pos(e);lx=p.x;ly=p.y; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener("pointermove",e=>{ if(!zeichnet)return; const p=pos(e); ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(p.x,p.y);ctx.stroke(); lx=p.x;ly=p.y; });
+  canvas.addEventListener("pointerup",()=>zeichnet=false);
+  canvas.addEventListener("pointercancel",()=>zeichnet=false);
+  return {
+    leer:()=>!benutzt,
+    clear:()=>{ ctx.clearRect(0,0,canvas.width,canvas.height); benutzt=false; },
+    blob:()=>new Promise(res=>canvas.toBlob(res,"image/png"))
+  };
+}
+
+/* ============================================================ */
+/*  QR-SCANNER                                                  */
+/* ============================================================ */
+let scanner=null;
+async function zeigeScanner(){
+  app.innerHTML=`<div class="kopf"><h1>QR scannen</h1></div>
+    <div class="karte"><div id="reader"></div>
+    <div class="klein" style="margin-top:10px">Halte den QR-Code am Werkzeug vor die Kamera.</div></div>`;
+  try{
+    scanner=new Html5Qrcode("reader");
+    await scanner.start({facingMode:"environment"},{fps:10,qrbox:240},txt=>{
+      let id=null; try{ id=new URL(txt).searchParams.get("w"); }catch{ /* evtl. reiner Text */ }
+      if(id){ stopScanner(); ersetze(()=>zeigeWerkzeug(id),"Werkzeug"); }
+      else toast("Kein bekannter Werkzeug-Code.",true);
+    });
+  }catch(e){ app.innerHTML+=`<div class="karte">Kamera nicht verfügbar: ${esc(e.message||e)}<br><span class="klein">Tipp: QR mit der normalen Handy-Kamera scannen – der Link öffnet das Werkzeug direkt.</span></div>`; }
+  // Beim Verlassen Kamera stoppen
+  const obs=new MutationObserver(()=>{ if(!document.getElementById("reader")){ stopScanner(); obs.disconnect(); } });
+  obs.observe(app,{childList:true});
+}
+function stopScanner(){ if(scanner){ scanner.stop().catch(()=>{}).then(()=>{scanner.clear?.();scanner=null;}); } }
+
+/* ============================================================ */
+/*  START                                                       */
+/* ============================================================ */
+async function starteApp(){
+  stack.length=0;
+  // Deep-Link ?w=<werkzeug-id> ?
+  const wid=new URLSearchParams(location.search).get("w");
+  if(wid){
+    history.replaceState({},"",location.pathname); // Param entfernen
+    zeige(zeigeUebersicht,"Fahrzeuge");
+    zeige(()=>zeigeWerkzeug(wid),"Werkzeug");
+  }else{
+    zeige(zeigeUebersicht,"Fahrzeuge");
+  }
+}
+
+(async function boot(){
+  if(!initSupabase()) return;
+  laden(true);
+  const {data}=await sb.auth.getSession();
+  laden(false);
+  if(data?.session) starteApp(); else zeigeLogin();
+})();
+</script>
+</body>
+</html>
