@@ -388,7 +388,7 @@ async function zeigeFahrzeug(id){
   </div>`;
 
   h+=`<div class="kopf" style="margin-top:20px"><h2 style="font-size:19px;flex:1">Werkzeug (${wz?wz.length:0})</h2>
-      <button class="btn geist klein" id="btnDruck">🏷️ QR-Bogen</button></div>`;
+      <button class="btn geist klein" id="btnDruck">🏷️ QR-Bogen drucken</button></div>`;
 
   if(!wz||!wz.length){
     h+=`<div class="leer-hinweis"><div class="gross">🧰</div>Noch kein Werkzeug erfasst.</div>`;
@@ -464,7 +464,8 @@ async function formWerkzeug(fahrzeugId,vorhanden){
       const fc=$("#fCode").files[0];
       if(fc){ const b=await komprimiere(fc); upd.code_foto_pfad=await fotoHochladen(`werkzeuge/${id}/code_${Date.now()}.jpg`,b); }
       if(Object.keys(upd).length){ const {error}=await sb.from("werkzeuge").update(upd).eq("id",id); if(error)throw error; }
-      toast("Gespeichert."); zurueck();
+      if(vorhanden){ toast("Gespeichert."); zurueck(); }
+      else{ toast("Angelegt – QR-Code steht bereit."); ersetze(()=>zeigeWerkzeug(id),"Werkzeug"); }
     }catch(e){ toast(e.message,true); } finally{ laden(false); }
   });
 }
@@ -485,7 +486,8 @@ async function zeigeWerkzeug(id){
     <div class="karte" style="text-align:center">
       <div class="klein" style="margin-bottom:8px">Aufklebbarer QR-Code</div>
       <canvas id="qr" style="width:180px;height:180px"></canvas>
-      <div class="klein" style="margin-top:6px">Scannen öffnet genau dieses Werkzeug.</div>
+      <div class="klein" style="margin:6px 0 12px">Scannen öffnet genau dieses Werkzeug.</div>
+      <button class="btn geist klein" id="wPrint">🏷️ Dieses Etikett drucken</button>
     </div>`;
   await fuelleBilder(app);
   const ziel=`${location.origin}${location.pathname}?w=${w.id}`;
@@ -494,6 +496,7 @@ async function zeigeWerkzeug(id){
   setFab(`<div class="btn-reihe">
       <button class="btn geist" style="flex:1" id="wEdit">Bearbeiten</button>
       <button class="btn gefahr" style="flex:1" id="wDel">Löschen</button></div>`);
+  $("#wPrint").onclick=()=>druckeEinzelEtikett(w);
   $("#wEdit").onclick=()=>zeige(()=>formWerkzeug(w.fahrzeug_id,w),"Werkzeug bearbeiten");
   $("#wDel").onclick=async()=>{
     if(!confirm(`„${w.name}" wirklich löschen?`)) return;
@@ -515,6 +518,16 @@ function druckeQrBogen(f,wz){
   const canvases=[...db.querySelectorAll("canvas")];
   Promise.all(canvases.map(c=>new Promise(r=>QRCode.toCanvas(c,c.dataset.ziel,{width:260,margin:1},()=>r()))))
     .then(()=>{ window.print(); });
+}
+
+/* ---------- Einzelnes Etikett drucken ---------- */
+function druckeEinzelEtikett(w){
+  const db=$("#druckbereich");
+  const kennz=w.fahrzeuge?.kennzeichen||"";
+  db.innerHTML=`<div class="qr-grid"><div class="qr-label"><canvas data-ziel="${location.origin}${location.pathname}?w=${w.id}"></canvas>
+    <div class="nm">${esc(w.name)}</div><div class="sub">${esc(kennz)}${w.seriennummer?" · "+esc(w.seriennummer):""}</div></div></div>`;
+  const c=db.querySelector("canvas");
+  QRCode.toCanvas(c,c.dataset.ziel,{width:260,margin:1},()=>window.print());
 }
 
 /* ============================================================ */
