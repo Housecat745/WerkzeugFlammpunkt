@@ -20,8 +20,6 @@ const CONFIG = {
 
 <!-- externe Bibliotheken -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <style>
   :root{
@@ -113,9 +111,6 @@ const CONFIG = {
   #sigpad{width:100%;height:200px;background:#fff;border:1.5px dashed var(--linie);
     border-radius:12px;touch-action:none}
 
-  /* Scanner */
-  #reader{width:100%;border-radius:12px;overflow:hidden}
-
   /* Toast */
   #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(120px);
     background:var(--tinte);color:#fff;padding:13px 18px;border-radius:12px;max-width:90%;
@@ -135,18 +130,6 @@ const CONFIG = {
   .fab-reihe{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(env(safe-area-inset-bottom) + 12px);
     background:linear-gradient(to top,var(--bg) 60%,transparent);max-width:760px;margin:0 auto;z-index:15}
 
-  /* Druck: QR-Bogen */
-  #druckbereich{display:none}
-  @media print{
-    header,main,.fab-reihe,#toast,#laden{display:none !important}
-    #druckbereich{display:block !important}
-    .qr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10mm;padding:8mm}
-    .qr-label{border:1px dashed #999;border-radius:6px;padding:6mm 3mm;text-align:center;
-      break-inside:avoid;page-break-inside:avoid}
-    .qr-label canvas{width:34mm !important;height:34mm !important}
-    .qr-label .nm{font-size:11pt;font-weight:700;margin-top:3mm;word-break:break-word}
-    .qr-label .sub{font-size:8pt;color:#555}
-  }
   @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
 </style>
 </head>
@@ -161,7 +144,6 @@ const CONFIG = {
 <main id="app"></main>
 <div class="fab-reihe" id="fab" style="display:none"></div>
 
-<div id="druckbereich"></div>
 <div id="toast"></div>
 <div id="laden"><div class="spinner"></div></div>
 
@@ -312,8 +294,7 @@ async function zeigeUebersicht(){
   const bestSet=new Set((best||[]).map(b=>b.fahrzeug_id));
 
   let h=`<div class="kopf"><h1>Fahrzeuge</h1>
-    <button class="btn geist klein" id="btnFahrer">👤 Fahrer</button>
-    <button class="btn geist klein" id="btnScan">⛶ Scannen</button></div>`;
+    <button class="btn geist klein" id="btnFahrer">👤 Fahrer</button></div>`;
   h+=`<div class="klein" style="margin:-8px 0 14px">Monatscheck ${monatLesbar(m)}</div>`;
 
   if(!fz||!fz.length){
@@ -334,7 +315,6 @@ async function zeigeUebersicht(){
   app.innerHTML=h;
   app.querySelectorAll("[data-fz]").forEach(c=>c.onclick=()=>zeige(()=>zeigeFahrzeug(c.dataset.fz),"Fahrzeug"));
   $("#btnFahrer").onclick=()=>zeige(zeigeFahrerListe,"Fahrer");
-  $("#btnScan").onclick=()=>zeige(zeigeScanner,"QR scannen");
   setFab(`<button class="btn">＋ Fahrzeug hinzufügen</button>`,()=>zeige(()=>formFahrzeug(),"Neues Fahrzeug"));
 }
 
@@ -390,8 +370,7 @@ async function zeigeFahrzeug(id){
     </div>
   </div>`;
 
-  h+=`<div class="kopf" style="margin-top:20px"><h2 style="font-size:19px;flex:1">Werkzeug (${wz?wz.length:0})</h2>
-      <button class="btn geist klein" id="btnDruck">🏷️ QR-Bogen drucken</button></div>`;
+  h+=`<div class="kopf" style="margin-top:20px"><h2 style="font-size:19px;flex:1">Werkzeug (${wz?wz.length:0})</h2></div>`;
 
   if(!wz||!wz.length){
     h+=`<div class="leer-hinweis"><div class="gross">🧰</div>Noch kein Werkzeug erfasst.</div>`;
@@ -410,7 +389,6 @@ async function zeigeFahrzeug(id){
   app.innerHTML=h;
   await fuelleBilder(app);
   $("#btnEditFz").onclick=()=>zeige(()=>formFahrzeug(f),"Fahrzeug bearbeiten");
-  $("#btnDruck").onclick=()=>druckeQrBogen(f,wz||[]);
   app.querySelectorAll("[data-wz]").forEach(c=>c.onclick=()=>zeige(()=>zeigeWerkzeug(c.dataset.wz),"Werkzeug"));
   app.querySelectorAll("[data-edit]").forEach(b=>b.onclick=(e)=>{
     e.stopPropagation();
@@ -458,7 +436,6 @@ async function formWerkzeug(fahrzeugId,vorhanden){
         <img class="thumb ${w.code_foto_pfad?"":"leer"}" id="prevCode" ${w.code_foto_pfad?`data-pfad="${esc(w.code_foto_pfad)}"`:""}>${w.code_foto_pfad?"":"🏷️"}
         <input type="file" accept="image/*" capture="environment" id="fCode" style="flex:1">
       </div>
-      <div class="klein" style="margin-top:12px">Den <b>aufklebbaren</b> QR-Code erzeugt die App selbst — den findest du nach dem Speichern in der Werkzeug-Ansicht und im QR-Bogen.</div>
     </div>`;
   await fuelleBilder(app);
 
@@ -482,8 +459,7 @@ async function formWerkzeug(fahrzeugId,vorhanden){
       const fc=$("#fCode").files[0];
       if(fc){ const b=await komprimiere(fc); upd.code_foto_pfad=await fotoHochladen(`werkzeuge/${id}/code_${Date.now()}.jpg`,b); }
       if(Object.keys(upd).length){ const {error}=await sb.from("werkzeuge").update(upd).eq("id",id); if(error)throw error; }
-      if(vorhanden){ toast("Gespeichert."); zurueck(); }
-      else{ toast("Angelegt – QR-Code steht bereit."); ersetze(()=>zeigeWerkzeug(id),"Werkzeug"); }
+      toast("Gespeichert."); zurueck();
     }catch(e){ toast(e.message,true); } finally{ laden(false); }
   });
 }
@@ -500,21 +476,12 @@ async function zeigeWerkzeug(id){
       <div class="klein">Anzahl</div><div style="font-weight:700;margin-bottom:8px">${w.anzahl??1}</div>
       ${w.seriennummer?`<div class="klein">Seriennummer</div><div style="font-weight:700;margin-bottom:8px">${esc(w.seriennummer)}</div>`:""}
       ${w.code_foto_pfad?`<div class="klein">Vorhandener Code (Foto)</div><img class="foto-gross" data-pfad="${esc(w.code_foto_pfad)}" alt="" style="max-height:180px">`:""}
-    </div>
-    <div class="karte" style="text-align:center">
-      <div class="klein" style="margin-bottom:8px">Aufklebbarer QR-Code</div>
-      <canvas id="qr" style="width:180px;height:180px"></canvas>
-      <div class="klein" style="margin:6px 0 12px">Scannen öffnet genau dieses Werkzeug.</div>
-      <button class="btn geist klein" id="wPrint">🏷️ Dieses Etikett drucken</button>
     </div>`;
   await fuelleBilder(app);
-  const ziel=`${location.origin}${location.pathname}?w=${w.id}`;
-  QRCode.toCanvas($("#qr"),ziel,{width:180,margin:1},err=>{ if(err)console.warn(err); });
 
   setFab(`<div class="btn-reihe">
       <button class="btn geist" style="flex:1" id="wEdit">Bearbeiten</button>
       <button class="btn gefahr" style="flex:1" id="wDel">Löschen</button></div>`);
-  $("#wPrint").onclick=()=>druckeEinzelEtikett(w);
   $("#wEdit").onclick=()=>zeige(()=>formWerkzeug(w.fahrzeug_id,w),"Werkzeug bearbeiten");
   $("#wDel").onclick=async()=>{
     if(!confirm(`„${w.name}" wirklich löschen?`)) return;
@@ -524,28 +491,6 @@ async function zeigeWerkzeug(id){
     if(error){ toast(error.message,true); return; }
     toast("Gelöscht."); zurueck();
   };
-}
-
-/* ---------- QR-Bogen drucken ---------- */
-function druckeQrBogen(f,wz){
-  if(!wz.length){ toast("Keine Werkzeuge zum Drucken.",true); return; }
-  const db=$("#druckbereich");
-  db.innerHTML=`<h2 style="padding:8mm 8mm 0">${esc(f.kennzeichen)} — ${esc(f.bezeichnung||"")}</h2>
-    <div class="qr-grid">${wz.map(w=>`<div class="qr-label"><canvas data-ziel="${location.origin}${location.pathname}?w=${w.id}"></canvas>
-      <div class="nm">${esc(w.name)}</div><div class="sub">${esc(f.kennzeichen)}${w.seriennummer?" · "+esc(w.seriennummer):""}</div></div>`).join("")}</div>`;
-  const canvases=[...db.querySelectorAll("canvas")];
-  Promise.all(canvases.map(c=>new Promise(r=>QRCode.toCanvas(c,c.dataset.ziel,{width:260,margin:1},()=>r()))))
-    .then(()=>{ window.print(); });
-}
-
-/* ---------- Einzelnes Etikett drucken ---------- */
-function druckeEinzelEtikett(w){
-  const db=$("#druckbereich");
-  const kennz=w.fahrzeuge?.kennzeichen||"";
-  db.innerHTML=`<div class="qr-grid"><div class="qr-label"><canvas data-ziel="${location.origin}${location.pathname}?w=${w.id}"></canvas>
-    <div class="nm">${esc(w.name)}</div><div class="sub">${esc(kennz)}${w.seriennummer?" · "+esc(w.seriennummer):""}</div></div></div>`;
-  const c=db.querySelector("canvas");
-  QRCode.toCanvas(c,c.dataset.ziel,{width:260,margin:1},()=>window.print());
 }
 
 /* ============================================================ */
@@ -651,41 +596,11 @@ function initSigPad(canvas){
 }
 
 /* ============================================================ */
-/*  QR-SCANNER                                                  */
-/* ============================================================ */
-let scanner=null;
-async function zeigeScanner(){
-  app.innerHTML=`<div class="kopf"><h1>QR scannen</h1></div>
-    <div class="karte"><div id="reader"></div>
-    <div class="klein" style="margin-top:10px">Halte den QR-Code am Werkzeug vor die Kamera.</div></div>`;
-  try{
-    scanner=new Html5Qrcode("reader");
-    await scanner.start({facingMode:"environment"},{fps:10,qrbox:240},txt=>{
-      let id=null; try{ id=new URL(txt).searchParams.get("w"); }catch{ /* evtl. reiner Text */ }
-      if(id){ stopScanner(); ersetze(()=>zeigeWerkzeug(id),"Werkzeug"); }
-      else toast("Kein bekannter Werkzeug-Code.",true);
-    });
-  }catch(e){ app.innerHTML+=`<div class="karte">Kamera nicht verfügbar: ${esc(e.message||e)}<br><span class="klein">Tipp: QR mit der normalen Handy-Kamera scannen – der Link öffnet das Werkzeug direkt.</span></div>`; }
-  // Beim Verlassen Kamera stoppen
-  const obs=new MutationObserver(()=>{ if(!document.getElementById("reader")){ stopScanner(); obs.disconnect(); } });
-  obs.observe(app,{childList:true});
-}
-function stopScanner(){ if(scanner){ scanner.stop().catch(()=>{}).then(()=>{scanner.clear?.();scanner=null;}); } }
-
-/* ============================================================ */
 /*  START                                                       */
 /* ============================================================ */
 async function starteApp(){
   stack.length=0;
-  // Deep-Link ?w=<werkzeug-id> ?
-  const wid=new URLSearchParams(location.search).get("w");
-  if(wid){
-    history.replaceState({},"",location.pathname); // Param entfernen
-    zeige(zeigeUebersicht,"Fahrzeuge");
-    zeige(()=>zeigeWerkzeug(wid),"Werkzeug");
-  }else{
-    zeige(zeigeUebersicht,"Fahrzeuge");
-  }
+  zeige(zeigeUebersicht,"Fahrzeuge");
 }
 
 (async function boot(){
