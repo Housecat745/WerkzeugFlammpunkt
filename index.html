@@ -81,6 +81,9 @@ const CONFIG = {
   /* Foto-Thumb */
   .thumb{width:58px;height:58px;border-radius:10px;object-fit:cover;background:#eee;flex:none}
   .thumb.leer{display:flex;align-items:center;justify-content:center;color:#bbb;font-size:22px;border:1px dashed var(--linie)}
+  .wz-akt{background:#f0efec;border:1px solid var(--linie);border-radius:9px;font-size:16px;
+    width:38px;height:38px;flex:none;display:flex;align-items:center;justify-content:center;margin-left:4px}
+  .wz-akt:active{background:#e2e0dc}
   .foto-gross{width:100%;max-height:320px;object-fit:contain;border-radius:12px;background:#f0efec}
 
   /* Formular */
@@ -399,7 +402,8 @@ async function zeigeFahrzeug(id){
           ${w.foto_pfad?`<img class="thumb" data-pfad="${esc(w.foto_pfad)}" alt="">`:`<div class="thumb leer">🧰</div>`}
           <div class="wachse"><div style="font-weight:700" class="abschneiden">${esc(w.name)}</div>
             <div class="klein">Anzahl: ${w.anzahl??1}${w.seriennummer?" · Nr. "+esc(w.seriennummer):""}</div></div>
-          <span class="klein">›</span>
+          <button class="wz-akt" data-edit="${w.id}" aria-label="Bearbeiten">✏️</button>
+          <button class="wz-akt" data-del="${w.id}" data-name="${esc(w.name)}" aria-label="Löschen">🗑️</button>
         </div></div>`;
     }
   }
@@ -408,6 +412,20 @@ async function zeigeFahrzeug(id){
   $("#btnEditFz").onclick=()=>zeige(()=>formFahrzeug(f),"Fahrzeug bearbeiten");
   $("#btnDruck").onclick=()=>druckeQrBogen(f,wz||[]);
   app.querySelectorAll("[data-wz]").forEach(c=>c.onclick=()=>zeige(()=>zeigeWerkzeug(c.dataset.wz),"Werkzeug"));
+  app.querySelectorAll("[data-edit]").forEach(b=>b.onclick=(e)=>{
+    e.stopPropagation();
+    const wkz=(wz||[]).find(x=>x.id===b.dataset.edit);
+    zeige(()=>formWerkzeug(id,wkz),"Werkzeug bearbeiten");
+  });
+  app.querySelectorAll("[data-del]").forEach(b=>b.onclick=async(e)=>{
+    e.stopPropagation();
+    if(!confirm(`„${b.dataset.name}" wirklich löschen?`)) return;
+    laden(true);
+    const {error}=await sb.from("werkzeuge").delete().eq("id",b.dataset.del);
+    laden(false);
+    if(error){ toast(error.message,true); return; }
+    toast("Gelöscht."); render();
+  });
 
   setFab(`<div class="btn-reihe">
       <button class="btn geist" style="flex:1" id="fabWz">＋ Werkzeug</button>
